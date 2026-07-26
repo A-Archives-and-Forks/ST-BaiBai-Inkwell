@@ -64,7 +64,7 @@ export function buildShotFilename(floor: number, speaker: string, now = new Date
   const stamp =
     `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
     `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `${sanitizeFilename(speaker)}-楼层${floor}-${stamp}.png`;
+  return `${sanitizeFilename(speaker)}-楼层${floor}-${stamp}.jpg`;
 }
 
 /** 沿 .mes → #chat → body 找第一个不透明背景色,截图垫底避免透明 PNG */
@@ -396,8 +396,12 @@ export async function captureFloorShot(
     const blob = await snapdom.toBlob(shotTarget, {
       embedFonts: true,
       backgroundColor: resolveBackground(realChat),
-      scale: Math.min(window.devicePixelRatio || 1, 2),
-      type: 'png',
+      // JPEG + 1.5 倍:楼层截图以文字和插图为主,视觉上与无损 PNG 几乎无差,
+      // 体积从十几 MB 降到 1MB 上下;JPEG 不透明,resolveBackground 已保证有底色。
+      // type 必须是 'jpeg':snapdom 直接拼 image/${type},'jpg' 是非法 MIME,会静默回落 PNG
+      scale: Math.min(window.devicePixelRatio || 1, 1.5),
+      type: 'jpeg',
+      quality: 0.9,
     });
     return {
       blob,

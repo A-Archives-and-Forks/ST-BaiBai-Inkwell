@@ -58,6 +58,6 @@ describe('sanitizeFilename', () => {
 describe('buildShotFilename', () => {
   it('composes speaker, floor and timestamp', () => {
     const name = buildShotFilename(12, '柏宝', new Date(2026, 6, 26, 9, 5, 3));
-    expect(name).toBe('柏宝-楼层12-20260726-090503.png');
+    expect(name).toBe('柏宝-楼层12-20260726-090503.jpg');
   });
 });

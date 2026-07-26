@@ -19,17 +19,20 @@ export interface SnapdomOptions {
 export interface SnapdomResult {
   toPng(options?: SnapdomOptions): Promise<HTMLImageElement>;
   toCanvas(options?: SnapdomOptions): Promise<HTMLCanvasElement>;
-  toBlob(options?: SnapdomOptions & { type?: string }): Promise<Blob>;
+  toBlob(options?: SnapdomOptions & { type?: BlobImageType }): Promise<Blob>;
   download(options?: SnapdomOptions & { format?: string; filename?: string }): Promise<void>;
   url: string;
 }
+
+/** toBlob 的 type 直接拼进 `image/${type}`,必须是合法 MIME 子类型('jpg' 会静默回落 PNG) */
+export type BlobImageType = 'png' | 'jpeg' | 'webp' | 'svg';
 
 export interface SnapdomFn {
   (el: Element, options?: SnapdomOptions): Promise<SnapdomResult>;
   capture(el: Element, options?: SnapdomOptions): Promise<SnapdomResult>;
   toPng(el: Element, options?: SnapdomOptions): Promise<HTMLImageElement>;
   toCanvas(el: Element, options?: SnapdomOptions): Promise<HTMLCanvasElement>;
-  toBlob(el: Element, options?: SnapdomOptions & { type?: string }): Promise<Blob>;
+  toBlob(el: Element, options?: SnapdomOptions & { type?: BlobImageType }): Promise<Blob>;
   download(el: Element, options?: SnapdomOptions & { format?: string; filename?: string }): Promise<void>;
 }
 
