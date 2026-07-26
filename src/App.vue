@@ -33,6 +33,7 @@ import {
 import { buildReviewRows, type ReviewRow } from '@/state/review';
 import { buildFloorPreview } from '@/st/floorPreview';
 import { deleteFloorsFrom, toggleFloorHidden } from '@/st/floorActions';
+import { captureFloorShot, downloadBlob } from '@/st/floorShot';
 import { applyFloorText, getFloorSourceText, openFloorInPen } from '@/st/openFloor';
 import {
   closePen,
@@ -97,9 +98,13 @@ const reviewDecision = ref<Record<number, 'accept' | 'reject'>>({});
 const editedResults = ref<Record<number, string>>({});
 const editingResultId = ref<number | null>(null);
 const resultDraft = ref('');
-/* 工作台模式:标注=给 AI 下指令;编辑=不走 AI,直接手动改文 */
-const workMode = ref<'annotate' | 'edit'>('annotate');
+/* 工作台模式:标注=给 AI 下指令;多选=点选多段一次填同一组要求;编辑=不走 AI,直接手动改文 */
+const workMode = ref<'annotate' | 'multi' | 'edit'>('annotate');
 const editDrafts = ref<string[]>([]);
+/* 多选模式的选中段落与共用要求草稿(应用后写入各段标注,自身即清空) */
+const multiSelected = ref<number[]>([]);
+const bulkPhraseIds = ref<number[]>([]);
+const bulkNote = ref('');
 const generationError = ref('');
 const saving = ref(false);
 const replacing = ref(false);
@@ -182,6 +187,9 @@ watch(
     resultDraft.value = '';
     workMode.value = 'annotate';
     editDrafts.value = [];
+    multiSelected.value = [];
+    bulkPhraseIds.value = [];
+    bulkNote.value = '';
     generationError.value = '';
     contextSummary.value = '';
     contextRounds.value = penSettings.defaultContextRounds;
@@ -566,6 +574,34 @@ async function onDeleteFloor(floor: number): Promise<void> {
   }
 }
 
+/* —— 楼层截图:深度 0 重渲染 + 酒馆助手 iframe 实况合成,导出 PNG —— */
+const shootingFloor = ref<number | null>(null);
+
+async function onShootFloor(floor: number): Promise<void> {
+  if (shootingFloor.value != null) return;
+  shootingFloor.value = floor;
+  showToast(`正在生成第 ${floor} 层截图…`);
+  try {
+    const { blob, outcome } = await captureFloorShot(floor);
+    downloadBlob(blob, outcome.suggestedName);
+    if (outcome.frontendBlocks > outcome.iframesCaptured) {
+      const missed = outcome.frontendBlocks - outcome.iframesCaptured;
+      toastr?.warning?.(
+        outcome.floorInDom
+          ? `截图已保存，但有 ${missed} 个前端界面未渲染，以代码块显示`
+          : `截图已保存，但楼层未加载到聊天区，${missed} 个前端界面以代码块显示`,
+        '柏宝砚',
+      );
+    } else {
+      showToast(`第 ${floor} 层截图已保存`);
+    }
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : '截图失败');
+  } finally {
+    shootingFloor.value = null;
+  }
+}
+
 function goToWorkspace(): void {
   ui.page = ui.floor == null ? 'floors' : 'workspace';
 }
@@ -786,11 +822,16 @@ function backToAnnotate(): void {
   ui.stage = 'annotate';
 }
 
-/* 离开标注页就退回标注模式,手改草稿随之丢弃(草稿只活在标注页里) */
+/* 离开标注页就退回标注模式,手改草稿与多选状态随之丢弃(都只活在标注页里) */
 watch(
   () => ui.stage,
   stage => {
-    if (stage !== 'annotate') workMode.value = 'annotate';
+    if (stage !== 'annotate') {
+      workMode.value = 'annotate';
+      multiSelected.value = [];
+      bulkPhraseIds.value = [];
+      bulkNote.value = '';
+    }
   },
 );
 
@@ -805,13 +846,63 @@ const vAutogrow = {
   updated: (el: HTMLTextAreaElement) => growTextarea(el),
 };
 
-function setWorkMode(mode: 'annotate' | 'edit'): void {
+function setWorkMode(mode: 'annotate' | 'multi' | 'edit'): void {
   if (mode === workMode.value) return;
   if (mode === 'edit') {
     expandedId.value = null;
     editDrafts.value = ui.paragraphs.map(paragraph => paragraph.text);
   }
+  if (mode === 'multi') {
+    expandedId.value = null;
+    multiSelected.value = [];
+    bulkPhraseIds.value = [];
+    bulkNote.value = '';
+  }
   workMode.value = mode;
+}
+
+/* —— 多选批量标注:点选若干段落,把同一组要求一次写入每段的标注 —— */
+function isMultiSelected(id: number): boolean {
+  return multiSelected.value.includes(id);
+}
+
+function toggleMultiSelect(id: number): void {
+  if (viewingGenerationTarget.value) return;
+  multiSelected.value = isMultiSelected(id)
+    ? multiSelected.value.filter(item => item !== id)
+    : [...multiSelected.value, id];
+}
+
+const bulkFilled = computed(() => bulkPhraseIds.value.length > 0 || !!bulkNote.value.trim());
+
+/* 应用即写入 markedPhrases/paragraphNotes(与单段标注同一份数据,生成流程不感知多选)。
+   语句去重合并,补充要求追加成新行,不覆盖各段已有标注 */
+function applyBulkAnnotation(): void {
+  if (!multiSelected.value.length || !bulkFilled.value) return;
+  const note = bulkNote.value.trim();
+  for (const id of multiSelected.value) {
+    if (bulkPhraseIds.value.length) {
+      const merged = new Set([...(markedPhrases.value[id] ?? []), ...bulkPhraseIds.value]);
+      markedPhrases.value[id] = [...merged];
+    }
+    if (note) {
+      const existing = paragraphNotes.value[id]?.trim();
+      paragraphNotes.value[id] = existing ? `${existing}\n${note}` : note;
+    }
+  }
+  const count = multiSelected.value.length;
+  multiSelected.value = [];
+  bulkPhraseIds.value = [];
+  bulkNote.value = '';
+  workMode.value = 'annotate';
+  showToast(`已把要求应用到 ${count} 段`);
+}
+
+function cancelMultiSelect(): void {
+  workMode.value = 'annotate';
+  multiSelected.value = [];
+  bulkPhraseIds.value = [];
+  bulkNote.value = '';
 }
 
 function discardManualEdit(): void {
@@ -1343,6 +1434,7 @@ function onOverlayClick(event: MouseEvent): void {
                 <span class="bby-strip-meta">
                   <span class="bby-floor-number">{{ ui.floorLabel }}</span>
                   <span v-if="workMode === 'annotate'">已标注 <b>{{ markedCount }}</b> 行</span>
+                  <span v-else-if="workMode === 'multi'">已选 <b>{{ multiSelected.length }}</b> 段</span>
                   <span v-else>手动修改原文，不经过 AI</span>
                 </span>
                 <div class="bby-segmented bby-mode-switch" role="tablist" aria-label="工作台模式">
@@ -1354,6 +1446,15 @@ function onOverlayClick(event: MouseEvent): void {
                     @click="setWorkMode('annotate')"
                   >
                     标注
+                  </button>
+                  <button
+                    type="button"
+                    class="bby-seg"
+                    :class="{ 'is-on': workMode === 'multi' }"
+                    :disabled="generating || viewingGenerationTarget || saving || replacing"
+                    @click="setWorkMode('multi')"
+                  >
+                    多选
                   </button>
                   <button
                     type="button"
@@ -1518,7 +1619,8 @@ function onOverlayClick(event: MouseEvent): void {
                   class="bby-para"
                   :class="{
                     'is-open': workMode === 'annotate' && expandedId === paragraph.id,
-                    'is-marked': workMode === 'annotate' && isMarked(paragraph.id),
+                    'is-marked': workMode !== 'edit' && isMarked(paragraph.id),
+                    'is-selected': workMode === 'multi' && isMultiSelected(paragraph.id),
                   }"
                 >
                   <textarea
@@ -1530,6 +1632,22 @@ function onOverlayClick(event: MouseEvent): void {
                     spellcheck="false"
                     aria-label="手动编辑本行"
                   ></textarea>
+                  <template v-else-if="workMode === 'multi'">
+                    <button
+                      class="bby-para-text bby-para-selectable"
+                      type="button"
+                      :disabled="viewingGenerationTarget"
+                      :aria-pressed="isMultiSelected(paragraph.id)"
+                      @click="toggleMultiSelect(paragraph.id)"
+                    >
+                      <span class="bby-para-check" aria-hidden="true"><Icon name="check" /></span>
+                      <span class="bby-para-select-text">{{ paragraph.text }}</span>
+                    </button>
+                    <div v-if="isMarked(paragraph.id)" class="bby-para-tags">
+                      <span v-for="name in markedNames(paragraph.id)" :key="name" class="bby-tag">{{ name }}</span>
+                      <span v-if="paragraphNotes[paragraph.id]?.trim()" class="bby-tag">+ 补充要求</span>
+                    </div>
+                  </template>
                   <template v-else>
                   <button
                     class="bby-para-text"
@@ -1658,6 +1776,22 @@ function onOverlayClick(event: MouseEvent): void {
                 </div>
               </main>
 
+              <section
+                v-if="ui.stage === 'annotate' && workMode === 'multi'"
+                class="bby-bulk-editor"
+                aria-label="批量标注要求"
+              >
+                <div class="bby-para-editor-head">
+                  <span>{{ multiSelected.length ? `已选 ${multiSelected.length} 段，填写共同要求` : '先点选上方段落' }}</span>
+                </div>
+                <PhrasePicker v-if="phrases.length" v-model="bulkPhraseIds" :phrases="phrases" />
+                <textarea
+                  v-model="bulkNote"
+                  class="bby-input bby-note bby-bulk-note"
+                  placeholder="填写希望如何修改选中的这几段"
+                ></textarea>
+              </section>
+
               <footer class="bby-action-bar">
                 <div v-if="ui.stage === 'review' || workMode === 'annotate'" ref="channelMenu" class="bby-channel-menu">
                   <button
@@ -1706,6 +1840,19 @@ function onOverlayClick(event: MouseEvent): void {
                         @click="saveManualEdit"
                       >
                         <Icon name="check" /> {{ saving ? '保存中…' : '保存到楼层' }}
+                      </button>
+                    </template>
+                    <template v-else-if="workMode === 'multi'">
+                      <button class="bby-button" type="button" @click="cancelMultiSelect">
+                        <Icon name="undo" /> 取消
+                      </button>
+                      <button
+                        class="bby-button bby-primary"
+                        type="button"
+                        :disabled="!multiSelected.length || !bulkFilled"
+                        @click="applyBulkAnnotation"
+                      >
+                        <Icon name="check" /> 应用到 {{ multiSelected.length }} 段
                       </button>
                     </template>
                     <button
@@ -1786,6 +1933,18 @@ function onOverlayClick(event: MouseEvent): void {
                           <span class="bby-floor-tag bby-floor-role">{{ row.isUser ? 'User' : 'Char' }}</span>
                           <Icon v-if="row.hidden" name="ghost" class="bby-floor-ghost" title="已隐藏楼层（不参与上下文）" />
                           <span class="bby-floor-actions">
+                            <button
+                              class="bby-floor-action"
+                              type="button"
+                              :title="shootingFloor === row.floor ? '截图中…' : '截图该楼层'"
+                              :disabled="shootingFloor != null"
+                              @click.stop="onShootFloor(row.floor)"
+                            >
+                              <Icon
+                                :name="shootingFloor === row.floor ? 'refresh' : 'camera'"
+                                :class="{ 'bby-spin': shootingFloor === row.floor }"
+                              />
+                            </button>
                             <button
                               class="bby-floor-action"
                               type="button"

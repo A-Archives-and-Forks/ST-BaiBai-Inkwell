@@ -664,6 +664,69 @@
   font-weight: 600;
 }
 
+/* —— 多选批量标注 —— */
+
+/* 选中态:左缘色条 + 淡底,与已标注(is-marked)区分靠行首的勾选圆点 */
+.bby-para.is-selected {
+  background: var(--bby-accent-soft);
+}
+
+.bby-para.is-selected::before {
+  background: var(--bby-accent);
+}
+
+/* 多选模式的段落按钮:行首加一颗勾选圆点,文本布局与阅读态一致 */
+.bby-para-selectable {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.bby-para-check {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+  border: 1.5px solid var(--bby-line-strong);
+  border-radius: 50%;
+  color: transparent;
+  font-size: 11px;
+  transition:
+    background var(--bby-duration) var(--bby-ease),
+    border-color var(--bby-duration) var(--bby-ease),
+    color var(--bby-duration) var(--bby-ease);
+}
+
+.bby-para.is-selected .bby-para-check {
+  border-color: var(--bby-accent);
+  background: var(--bby-accent);
+  color: var(--bby-accent-ink);
+}
+
+.bby-para-select-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 批量要求面板:固定在底栏上方,不随段落列表滚动,选完段落低头即见 */
+.bby-bulk-editor {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 28px;
+  border-top: 1px solid var(--bby-line);
+  background: var(--bby-surface-2);
+}
+
+/* 吸底空间有限:输入框压矮,需要长文时仍可手动拉高 */
+.bby-bulk-note {
+  min-height: 44px;
+}
+
 /* —— 表单原子(与柏宝书同源)—— */
 .bby-field {
   display: flex;
@@ -2401,6 +2464,10 @@
   .bby-action-bar {
     gap: 10px;
     padding: 10px 14px;
+  }
+
+  .bby-bulk-editor {
+    padding: 8px 14px;
   }
 
   /* 窄屏:渠道按钮占满剩余宽度,整行可点;名称按剩余空间截断 */

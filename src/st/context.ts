@@ -5,6 +5,7 @@ export interface STMessage {
   mes: string;
   swipes?: string[];
   swipe_id?: number;
+  force_avatar?: string;
   extra?: Record<string, unknown>;
 }
 
@@ -34,6 +35,16 @@ export interface STContext {
     message: STMessage,
     options?: { rerenderMessage?: boolean },
   ) => unknown;
+  /** ST 的消息渲染管线:原文 → 正则脚本(深度由 messageId 推算)→ markdown → 安全过滤后的 HTML */
+  messageFormatting?: (
+    mes: string,
+    chName: string,
+    isSystem: boolean,
+    isUser: boolean,
+    messageId: number,
+    sanitizerOverrides?: Record<string, unknown>,
+    isReasoning?: boolean,
+  ) => string;
   eventSource?: {
     on?: (event: unknown, handler: (...args: unknown[]) => void) => void;
     off?: (event: unknown, handler: (...args: unknown[]) => void) => void;
@@ -43,8 +54,12 @@ export interface STContext {
     CHAT_CHANGED?: unknown;
     MESSAGE_EDITED?: unknown;
     MESSAGE_UPDATED?: unknown;
+    USER_MESSAGE_RENDERED?: unknown;
+    CHARACTER_MESSAGE_RENDERED?: unknown;
   };
   getRequestHeaders: () => Record<string, string>;
+  /** 头像缩略图地址(type: 'avatar' 角色 / 'persona' 用户) */
+  getThumbnailUrl?: (type: string, file: string) => string;
   getCurrentChatId?: () => string | undefined;
   executeSlashCommandsWithOptions?: (
     command: string,

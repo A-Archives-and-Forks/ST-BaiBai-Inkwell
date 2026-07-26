@@ -28,6 +28,7 @@ const paths: Record<string, string> = {
   bolt: '<path d="M13 4 5 13h6l-1 7 8-9h-6z"/>',
   replace: '<path d="M4 7h13"/><path d="m13 3 4 4-4 4"/><path d="M20 17H7"/><path d="m11 21-4-4 4-4"/>',
   ghost: '<path d="M5 21V11a7 7 0 0 1 14 0v10l-2.5-1.8-2.3 1.8-2.2-1.8-2.3 1.8L5 21z"/><circle cx="9.5" cy="10.5" r="1"/><circle cx="14.5" cy="10.5" r="1"/>',
+  camera: '<path d="M4 8.5h3l1.5-2.5h7L17 8.5h3a1 1 0 0 1 1 1V19a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5a1 1 0 0 1 1-1z"/><circle cx="12" cy="14" r="3.4"/>',
 };
 
 const markup = computed(() => paths[props.name] ?? '');
