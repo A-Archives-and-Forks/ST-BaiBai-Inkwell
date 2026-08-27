@@ -12,6 +12,20 @@ export interface ApiChannel {
   stream: boolean;
   prefill: boolean;
   excludeParams: string[];
+  /**
+   * 思考强度（推理模型的 reasoning_effort）。空串 = auto = 不发这个参数（默认，老渠道即此值）。
+   *
+   * 取值不做白名单校验，原样发给端点：各家词汇不统一（OpenAI 的 minimal/low/medium/high/xhigh、
+   * 部分中转站的 max/none……），中转站比我们更清楚自己的模型吃什么，校验只会误伤。
+   *
+   * 非空时整条请求改走 custom 源（见 api/client.ts 的 buildRequestBody）：
+   * ST 代理对 openai 源的 reasoning_effort 有**模型名白名单**（src/constants.js 的
+   * OPENAI_REASONING_EFFORT_MODELS，精确匹配 o1/o3/gpt-5 那批），模型名对不上就**静默丢弃且照样返回 200**——
+   * 用户设了却毫无效果、还看不出来。custom 源的 custom_include_body 是纯 merge，不过白名单。
+   *
+   * 跨插件：与柏宝绘/柏宝书共享同一份渠道（baibai_api_channels），三家字段名一致。
+   */
+  reasoningEffort: string;
 }
 
 interface SharedChannelsStore {
@@ -102,6 +116,9 @@ function normalizeChannel(raw: unknown): ApiChannel {
       : typeof excludeParams === 'string'
         ? excludeParams.split(',').map(item => item.trim()).filter(Boolean)
         : [],
+    // 后加字段：老渠道无此键 → 空串（auto，不发参数），行为与加字段前完全一致
+    reasoningEffort:
+      typeof channel.reasoningEffort === 'string' ? channel.reasoningEffort.trim() : '',
   };
 }
 
@@ -345,6 +362,7 @@ export function newChannel(): ApiChannel {
     stream: false,
     prefill: true,
     excludeParams: [],
+    reasoningEffort: '',
   };
 }
 

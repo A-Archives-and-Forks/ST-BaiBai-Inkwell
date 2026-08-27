@@ -21,6 +21,7 @@ import {
 } from '@/api/sharedChannels';
 import { checkForUpdate, performUpdate, updateState } from '@/api/update';
 import Collapsible from '@/components/Collapsible.vue';
+import BbySelect from '@/components/BbySelect.vue';
 import Icon from '@/components/Icon.vue';
 import ModalMask from '@/components/ModalMask.vue';
 import PhrasePicker from '@/components/PhrasePicker.vue';
@@ -83,6 +84,21 @@ const generalNote = ref('');
 const globalPhraseIds = ref<number[]>([]);
 const showKey = ref(false);
 const channelDraft = ref<ApiChannel | null>(null);
+
+/**
+ * 思考强度候选：各家取值的并集，**不是**某一家的官方列表。
+ * auto 是显式选项（值为空串 = 不发送该参数），不是「留空」。
+ * 取值不做校验，原样发给端点（见 ApiChannel.reasoningEffort）。
+ */
+const REASONING_EFFORT_OPTIONS = [
+  { value: '', label: 'auto' },
+  { value: 'minimal', label: 'minimal' },
+  { value: 'low', label: 'low' },
+  { value: 'medium', label: 'medium' },
+  { value: 'high', label: 'high' },
+  { value: 'xhigh', label: 'xhigh' },
+  { value: 'max', label: 'max' },
+];
 const phraseDraft = ref<QuickPhrase | null>(null);
 const testMessage = ref('');
 const modelOptions = ref<string[]>([]);
@@ -2194,7 +2210,18 @@ function onOverlayClick(event: MouseEvent): void {
             <span>超时（秒）</span>
             <input v-model.number="channelDraft.timeoutSec" class="bby-input" type="number" step="10" min="1" />
           </label>
+          <!-- 思考强度：自绘下拉（跟随主题；原生 select 的弹出层由系统渲染，主题管不到）。
+               auto 是显式选项，值为空串 = 不发送该参数 -->
+          <div class="bby-mini-field">
+            <span>思考强度</span>
+            <BbySelect
+              v-model="channelDraft.reasoningEffort"
+              :options="REASONING_EFFORT_OPTIONS"
+              aria-label="思考强度"
+            />
+          </div>
         </div>
+        <span class="bby-field-hint">思考强度不知道的就选 auto，DS 系推荐 max</span>
         <label class="bby-switch-row">
           <span class="bby-modal-label">流式传输</span>
           <input v-model="channelDraft.stream" type="checkbox" class="bby-checkbox" />

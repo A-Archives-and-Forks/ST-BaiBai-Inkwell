@@ -2185,7 +2185,8 @@
 
 /* 温度/token/超时:三个短输入并排,label 在上、窄框在下 */
 .bby-channel-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
 
@@ -2397,6 +2398,11 @@
 
 /* ============ 响应式:移动端整屏(底部抽屉式) ============ */
 @media (max-width: 640px) {
+  /* 渠道参数四连：窄屏一行四个每个只剩几十 px，落成 2×2 */
+  .bby-channel-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .bby-overlay {
     align-items: flex-end;
     padding: 0;
